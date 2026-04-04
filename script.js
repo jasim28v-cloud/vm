@@ -56,20 +56,6 @@ function closeImageViewer() {
     document.getElementById('imageViewerModal').classList.remove('open');
 }
 
-function prevImage() {
-    if (currentImageIndex > 0) {
-        currentImageIndex--;
-        document.getElementById('viewerImage').src = currentImageUrls[currentImageIndex];
-    }
-}
-
-function nextImage() {
-    if (currentImageIndex < currentImageUrls.length - 1) {
-        currentImageIndex++;
-        document.getElementById('viewerImage').src = currentImageUrls[currentImageIndex];
-    }
-}
-
 function formatTime(timestamp) {
     const now = Date.now();
     const diff = now - timestamp;
@@ -278,6 +264,16 @@ function createHeartAnimation(x, y) {
     heart.style.top = y + 'px';
     document.body.appendChild(heart);
     setTimeout(() => heart.remove(), 600);
+}
+
+// ==================== Video Functions ====================
+function toggleVideoPlay(container) {
+    const video = container.querySelector('video');
+    if (video.paused) {
+        video.play();
+    } else {
+        video.pause();
+    }
 }
 
 // ==================== Settings ====================
@@ -1049,11 +1045,12 @@ async function displayPosts(startIndex, count) {
                 mediaHtml = `<img src="${post.mediaUrl}" class="post-image" loading="lazy" onclick="event.stopPropagation(); openImageViewer(['${post.mediaUrl}'], 0)">`;
             } else if (post.mediaType === 'video') {
                 mediaHtml = `
-                    <div class="video-container" onclick="event.stopPropagation()">
-                        <video src="${post.mediaUrl}" class="post-video" autoplay muted loop playsinline></video>
-                        <div class="video-controls" style="position: absolute; bottom: 10px; right: 10px; background: rgba(0,0,0,0.6); border-radius: 20px; padding: 4px 8px;">
-                            <button onclick="this.parentElement.parentElement.querySelector('video').play()" style="background: none; border: none; color: white; cursor: pointer;"><i class="fa-solid fa-play"></i></button>
-                            <button onclick="this.parentElement.parentElement.querySelector('video').pause()" style="background: none; border: none; color: white; cursor: pointer;"><i class="fa-solid fa-pause"></i></button>
+                    <div class="video-container" onclick="event.stopPropagation(); toggleVideoPlay(this)">
+                        <video src="${post.mediaUrl}" class="post-video" preload="metadata" playsinline></video>
+                        <div class="video-overlay">
+                            <button onclick="event.stopPropagation(); this.parentElement.parentElement.querySelector('video').play()"><i class="fa-solid fa-play"></i></button>
+                            <button onclick="event.stopPropagation(); this.parentElement.parentElement.querySelector('video').pause()"><i class="fa-solid fa-pause"></i></button>
+                            <button onclick="event.stopPropagation(); this.parentElement.parentElement.querySelector('video').muted = !this.parentElement.parentElement.querySelector('video').muted"><i class="fa-solid fa-volume-up"></i></button>
                         </div>
                     </div>
                 `;
