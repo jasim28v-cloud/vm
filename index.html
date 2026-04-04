@@ -89,8 +89,8 @@
         
         /* Animations */
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
+            from { opacity: 0; transform: translateY(20px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
         }
         
         @keyframes pulse {
@@ -141,7 +141,6 @@
             align-items: center;
             justify-content: center;
             background: linear-gradient(135deg, #667eea, #764ba2);
-            backdrop-filter: blur(0px);
         }
         
         body.dark-mode .auth-screen {
@@ -448,20 +447,108 @@
             max-height: 400px;
             object-fit: cover;
             cursor: pointer;
+            border-radius: 16px;
+            margin: 8px 12px;
+            width: calc(100% - 24px);
         }
         
+        /* Video Container */
         .video-container {
             position: relative;
             background: #000;
-            border-radius: 16px;
+            border-radius: 20px;
             overflow: hidden;
             margin: 8px 12px;
+            cursor: pointer;
         }
         
         .post-video {
             width: 100%;
-            max-height: 400px;
+            max-height: 450px;
             object-fit: cover;
+            display: block;
+        }
+        
+        .video-overlay {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            border-radius: 30px;
+            padding: 6px 12px;
+            display: flex;
+            gap: 12px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        
+        .video-container:hover .video-overlay {
+            opacity: 1;
+        }
+        
+        .video-overlay button {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        
+        .video-overlay button:hover {
+            color: #7c3aed;
+        }
+        
+        /* Image Viewer Modal - مع خلفية ضبابية */
+        .image-viewer-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(12px);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .image-viewer-modal.open {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .image-viewer-modal img {
+            max-width: 90%;
+            max-height: 90%;
+            object-fit: contain;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        .image-viewer-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 28px;
+            color: white;
+            cursor: pointer;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        
+        .image-viewer-close:hover {
+            background: rgba(0, 0, 0, 0.8);
+            transform: scale(1.05);
         }
         
         .post-actions {
@@ -1024,31 +1111,6 @@
             max-width: 400px;
         }
         
-        /* Image Viewer */
-        .image-viewer-modal {
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.95);
-            z-index: 1000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.2s;
-        }
-        
-        .image-viewer-modal.open {
-            opacity: 1;
-            visibility: visible;
-        }
-        
-        .image-viewer-modal img {
-            max-width: 90%;
-            max-height: 90%;
-            object-fit: contain;
-        }
-        
         /* Heart Animation */
         .heart-animation {
             position: fixed;
@@ -1485,12 +1547,12 @@
         </div>
     </div>
     
-    <!-- Image Viewer -->
+    <!-- Image Viewer Modal -->
     <div id="imageViewerModal" class="image-viewer-modal" onclick="closeImageViewer()">
-        <div class="image-viewer-close" style="position: absolute; top: 20px; right: 20px; font-size: 32px; color: white; cursor: pointer;">&times;</div>
-        <button class="image-viewer-prev" style="position: absolute; left: 20px; top: 50%; background: rgba(0,0,0,0.5); color: white; border: none; font-size: 32px; cursor: pointer; width: 50px; height: 50px; border-radius: 50%;" onclick="event.stopPropagation(); prevImage()">&#10094;</button>
-        <img id="viewerImage" src="" style="max-width: 90%; max-height: 90%; object-fit: contain;">
-        <button class="image-viewer-next" style="position: absolute; right: 20px; top: 50%; background: rgba(0,0,0,0.5); color: white; border: none; font-size: 32px; cursor: pointer; width: 50px; height: 50px; border-radius: 50%;" onclick="event.stopPropagation(); nextImage()">&#10095;</button>
+        <div class="image-viewer-close" onclick="event.stopPropagation(); closeImageViewer()">
+            <i class="fa-solid fa-xmark"></i>
+        </div>
+        <img id="viewerImage" src="" onclick="event.stopPropagation()">
     </div>
     
     <!-- Video Call Modal -->
