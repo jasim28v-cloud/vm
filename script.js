@@ -29,7 +29,7 @@ let agoraClient = null;
 let localTracks = { videoTrack: null, audioTrack: null };
 let isCallActive = false;
 
-// ==================== Bad Words (يضيفها المدير فقط) ====================
+// ==================== Bad Words ====================
 let badWordsList = [];
 
 // ==================== Helper Functions ====================
@@ -100,22 +100,36 @@ function filterBadWords(text) {
     return filtered;
 }
 
-// ==================== Upload to Cloudinary ====================
-async function uploadToCloudinary(file) {
-    const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`;
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', UPLOAD_PRESET);
-    try {
-        const response = await fetch(url, { method: 'POST', body: formData });
-        const data = await response.json();
-        if (data.secure_url) return data.secure_url;
-        throw new Error('Upload failed');
-    } catch (error) {
-        console.error('Cloudinary error:', error);
-        showToast('فشل رفع الملف');
-        return null;
-    }
+// ==================== Upload to Cloudinary with Progress Bar ====================
+function uploadToCloudinaryWithProgress(file, onProgress) {
+    return new Promise((resolve, reject) => {
+        const url = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/upload`;
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', UPLOAD_PRESET);
+        
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', url);
+        
+        xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable && onProgress) {
+                const percent = Math.round((event.loaded / event.total) * 100);
+                onProgress(percent);
+            }
+        };
+        
+        xhr.onload = () => {
+            if (xhr.status === 200) {
+                const data = JSON.parse(xhr.responseText);
+                resolve(data.secure_url);
+            } else {
+                reject(new Error('Upload failed'));
+            }
+        };
+        
+        xhr.onerror = () => reject(new Error('Network error'));
+        xhr.send(formData);
+    });
 }
 
 // ==================== Bad Words Management (Admin Only) ====================
@@ -162,7 +176,7 @@ async function startVoiceRecording() {
         mediaRecorder.ondataavailable = (event) => audioChunks.push(event.data);
         mediaRecorder.onstop = async () => {
             const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-            const audioUrl = await uploadToCloudinary(audioBlob);
+            const audioUrl = await uploadToCloudinaryWithProgress(audioBlob, null);
             if (audioUrl && currentChatUser) {
                 const chatId = getChatId(currentUser.uid, currentChatUser.uid);
                 await db.ref(`chats/${chatId}`).push({
@@ -423,110 +437,17 @@ async function startVideoCallWithUser(userId) {
     });
 }
 
-// ==================== Logout ====================
+// ==================== Logout (معدل - توجيه إلى auth.html) ====================
 async function logout() {
     try {
         await auth.signOut();
+        localStorage.removeItem('auth_logged_in');
         showToast('👋 تم تسجيل الخروج بنجاح');
-        setTimeout(() => location.reload(), 1000);
+        setTimeout(() => {
+            window.location.href = 'auth.html';
+        }, 1000);
     } catch (error) {
         showToast('❌ حدث خطأ أثناء تسجيل الخروج');
-    }
-}
-
-// ==================== Login & Register ====================
-function switchAuth(form) {
-    document.getElementById('loginForm').classList.remove('active');
-    document.getElementById('registerForm').classList.remove('active');
-    document.getElementById(`${form}Form`).classList.add('active');
-}
-
-async function login() {
-    const email = document.getElementById('loginEmail')?.value;
-    const password = document.getElementById('loginPassword')?.value;
-    const msgDiv = document.getElementById('loginMsg');
-    if (!email || !password) return msgDiv.textContent = 'الرجاء إدخال البريد وكلمة المرور';
-    try {
-        showToast('🔄 جاري تسجيل الدخول...');
-        const userCredential = await auth.signInWithEmailAndPassword(email, password);
-        currentUser = userCredential.user;
-        const snapshot = await db.ref(`users/${currentUser.uid}`).once('value');
-        if (snapshot.exists()) {
-            currentUser = { ...currentUser, ...snapshot.val() };
-        } else {
-            await db.ref(`users/${currentUser.uid}`).set({
-                uid: currentUser.uid, name: currentUser.displayName || email.split('@')[0],
-                email: email, bio: "مرحباً! أنا في NEXUS ✨", avatar: "", cover: "",
-                website: "", verified: false, isAdmin: false, blockedUsers: {}, mutedUntil: 0, createdAt: Date.now()
-            });
-        }
-        if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-            showToast('🌟 مرحباً بك في لوحة التحكم يا مدير NEXUS!');
-            await db.ref(`users/${currentUser.uid}`).update({ isAdmin: true, verified: true, name: 'NEXUS Admin' });
-            currentUser.isAdmin = true;
-            currentUser.verified = true;
-        }
-        document.getElementById('authScreen').style.display = 'none';
-        document.getElementById('mainApp').style.display = 'block';
-        showToast(`✨ مرحباً ${currentUser.displayName || currentUser.name}!`);
-        
-        resetInfiniteScroll();
-        await loadFeed();
-        loadNotifications();
-        loadTrendingHashtags();
-        loadDndStatus();
-        checkScheduledPosts();
-        await loadBadWordsList();
-        
-        const savedTheme = localStorage.getItem('theme');
-        if (savedTheme === 'dark') document.body.classList.add('dark-mode');
-        const savedReadMode = localStorage.getItem('readMode');
-        if (savedReadMode === 'true') {
-            readModeActive = true;
-            document.getElementById('readModeToggle')?.classList.add('active');
-            document.body.classList.add('read-mode');
-        }
-        const savedHideLikes = localStorage.getItem('hideLikes');
-        if (savedHideLikes === 'true') {
-            hideLikesActive = true;
-            document.getElementById('hideLikesToggle')?.classList.add('active');
-        }
-        await recordProfileView(currentUser.uid);
-    } catch (error) {
-        if (msgDiv) msgDiv.textContent = error.message;
-        showToast(error.message);
-    }
-}
-
-async function register() {
-    const name = document.getElementById('regName')?.value;
-    const email = document.getElementById('regEmail')?.value;
-    const password = document.getElementById('regPass')?.value;
-    const confirmPass = document.getElementById('regConfirmPass')?.value;
-    const msgDiv = document.getElementById('regMsg');
-    if (!name || !email || !password) return msgDiv.textContent = 'الرجاء ملء جميع الحقول';
-    if (password !== confirmPass) return msgDiv.textContent = 'كلمة المرور غير متطابقة';
-    try {
-        showToast('🔄 جاري إنشاء الحساب...');
-        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-        await userCredential.user.updateProfile({ displayName: name });
-        await db.ref(`users/${userCredential.user.uid}`).set({
-            uid: userCredential.user.uid, name: name, email: email,
-            bio: "مرحباً! أنا في NEXUS ✨", avatar: "", cover: "", website: "",
-            verified: false, isAdmin: email === ADMIN_EMAIL, blockedUsers: {}, mutedUntil: 0, createdAt: Date.now()
-        });
-        currentUser = userCredential.user;
-        currentUser.name = name;
-        document.getElementById('authScreen').style.display = 'none';
-        document.getElementById('mainApp').style.display = 'block';
-        
-        resetInfiniteScroll();
-        await loadFeed();
-        loadTrendingHashtags();
-        showToast(`🎉 أهلاً بك ${name} في NEXUS!`);
-    } catch (error) {
-        if (msgDiv) msgDiv.textContent = error.message;
-        showToast(error.message);
     }
 }
 
@@ -668,7 +589,10 @@ async function changeAvatar() {
     input.onchange = async (e) => {
         const file = e.target.files[0];
         if (file) {
-            const url = await uploadToCloudinary(file);
+            showToast('🔄 جاري رفع الصورة...');
+            const url = await uploadToCloudinaryWithProgress(file, (percent) => {
+                console.log(`Upload progress: ${percent}%`);
+            });
             if (url) {
                 await db.ref(`users/${currentUser.uid}`).update({ avatar: url });
                 currentUser.avatar = url;
@@ -688,7 +612,10 @@ async function changeCover() {
     input.onchange = async (e) => {
         const file = e.target.files[0];
         if (file) {
-            const url = await uploadToCloudinary(file);
+            showToast('🔄 جاري رفع الصورة...');
+            const url = await uploadToCloudinaryWithProgress(file, (percent) => {
+                console.log(`Upload progress: ${percent}%`);
+            });
             if (url) {
                 await db.ref(`users/${currentUser.uid}`).update({ cover: url });
                 currentUser.cover = url;
@@ -718,13 +645,47 @@ async function isBlocked(userId) {
     return snapshot.exists();
 }
 
-// ==================== Create Post ====================
+// ==================== Preview Media ====================
+function previewMedia(input, type) {
+    const file = input.files[0];
+    if (file) {
+        selectedMediaFile = file;
+        const previewDiv = document.getElementById('mediaPreview');
+        const previewImg = document.getElementById('previewImg');
+        const previewVideo = document.getElementById('previewVideo');
+        
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            if (type === 'image') {
+                previewImg.src = e.target.result;
+                previewImg.style.display = 'block';
+                previewVideo.style.display = 'none';
+            } else if (type === 'video') {
+                previewVideo.src = e.target.result;
+                previewVideo.style.display = 'block';
+                previewImg.style.display = 'none';
+            }
+            previewDiv.style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function removeSelectedMedia() {
+    selectedMediaFile = null;
+    document.getElementById('mediaPreview').style.display = 'none';
+    document.getElementById('previewImg').src = '';
+    document.getElementById('previewVideo').src = '';
+    document.getElementById('postImage').value = '';
+    document.getElementById('postVideo').value = '';
+}
+
+// ==================== Create Post with Progress Bar ====================
 async function createPost() {
     const publishBtn = document.getElementById('publishPostBtn');
-    if (publishBtn) {
-        publishBtn.style.transform = 'scale(0.95)';
-        setTimeout(() => { if(publishBtn) publishBtn.style.transform = 'scale(1)'; }, 150);
-    }
+    const progressContainer = document.getElementById('uploadProgressContainer');
+    const progressFill = document.getElementById('uploadProgressFill');
+    const progressText = document.getElementById('uploadProgressText');
     
     let text = document.getElementById('postText')?.value;
     if (containsBadWords(text)) return showToast('⚠️ المنشور يحتوي على كلمات ممنوعة');
@@ -732,11 +693,34 @@ async function createPost() {
     text = filterBadWords(text);
     if (await isUserMuted(currentUser.uid)) return showToast('⚠️ أنت مقيد مؤقتاً ولا يمكنك النشر');
 
+    // إظهار شريط التقدم وتعطيل الزر
+    if (selectedMediaFile) {
+        progressContainer.style.display = 'block';
+        progressFill.style.width = '0%';
+        progressText.textContent = '0%';
+    }
+    publishBtn.disabled = true;
+    publishBtn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> جاري الرفع...';
+    publishBtn.style.opacity = '0.7';
+
     let mediaUrl = "", mediaType = "";
     if (selectedMediaFile) {
         mediaType = selectedMediaFile.type.split('/')[0];
-        mediaUrl = await uploadToCloudinary(selectedMediaFile);
-        if (!mediaUrl) return;
+        
+        try {
+            mediaUrl = await uploadToCloudinaryWithProgress(selectedMediaFile, (percent) => {
+                progressFill.style.width = `${percent}%`;
+                progressText.textContent = `${percent}%`;
+            });
+            if (!mediaUrl) throw new Error('Upload failed');
+        } catch (error) {
+            showToast('❌ فشل رفع الملف: ' + error.message);
+            progressContainer.style.display = 'none';
+            publishBtn.disabled = false;
+            publishBtn.innerHTML = '✨ نشر';
+            publishBtn.style.opacity = '1';
+            return;
+        }
     }
 
     const hashtags = extractHashtags(text);
@@ -776,9 +760,16 @@ async function createPost() {
         await db.ref(`hashtags/${tag.toLowerCase()}/${postRef.key}`).set(true);
     }
 
+    // إخفاء شريط التقدم وإعادة تعيين الزر
+    progressContainer.style.display = 'none';
+    progressFill.style.width = '0%';
+    progressText.textContent = '0%';
+    publishBtn.disabled = false;
+    publishBtn.innerHTML = '✨ نشر';
+    publishBtn.style.opacity = '1';
+    
     document.getElementById('postText').value = "";
-    document.getElementById('mediaPreview').innerHTML = "";
-    document.getElementById('mediaPreview').style.display = "none";
+    removeSelectedMedia();
     document.getElementById('pollBuilder').style.display = "none";
     document.getElementById('pollQuestion').value = "";
     document.getElementById('pollOption1').value = "";
@@ -1516,10 +1507,14 @@ async function sendChatMessage() {
 async function sendChatImage(input) {
     const file = input.files[0];
     if (file && currentChatUser) {
-        const url = await uploadToCloudinary(file);
+        showToast('🔄 جاري رفع الصورة...');
+        const url = await uploadToCloudinaryWithProgress(file, (percent) => {
+            console.log(`Upload progress: ${percent}%`);
+        });
         if (url) {
             const chatId = getChatId(currentUser.uid, currentChatUser.uid);
             await db.ref(`chats/${chatId}`).push({ senderId: currentUser.uid, imageUrl: url, timestamp: Date.now(), read: false });
+            showToast('✅ تم إرسال الصورة');
         }
     }
     input.value = '';
@@ -1723,8 +1718,7 @@ async function openStories() {
 function closeCompose() {
     document.getElementById('composeModal').classList.remove('open');
     document.getElementById('postText').value = '';
-    document.getElementById('mediaPreview').innerHTML = '';
-    document.getElementById('mediaPreview').style.display = 'none';
+    removeSelectedMedia();
     document.getElementById('pollBuilder').style.display = 'none';
     selectedMediaFile = null;
     editingPostId = null;
@@ -1782,33 +1776,12 @@ function switchTab(tab) {
     }
 }
 
-function previewMedia(input, type) {
-    const file = input.files[0];
-    if (file) {
-        selectedMediaFile = file;
-        const preview = document.getElementById('mediaPreview');
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            if (type === 'image') preview.innerHTML = `<div style="position: relative;"><img src="${e.target.result}" style="max-height: 250px; border-radius: 12px; width: 100%; object-fit: cover;"><div class="remove-media" onclick="removeSelectedMedia()" style="position: absolute; top: 8px; right: 8px; background: black; color: white; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer;"><i class="fa-solid fa-times"></i></div></div>`;
-            else if (type === 'video') preview.innerHTML = `<div style="position: relative;"><video src="${e.target.result}" controls style="max-height: 250px; border-radius: 12px; width: 100%;"></video><div class="remove-media" onclick="removeSelectedMedia()" style="position: absolute; top: 8px; right: 8px; background: black; color: white; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer;"><i class="fa-solid fa-times"></i></div></div>`;
-            preview.style.display = 'block';
-        };
-        reader.readAsDataURL(file);
-    }
-}
-
-function removeSelectedMedia() {
-    selectedMediaFile = null;
-    document.getElementById('mediaPreview').innerHTML = '';
-    document.getElementById('mediaPreview').style.display = 'none';
-}
-
 // ==================== Last Seen Update ====================
 setInterval(async () => {
     if (currentUser) await db.ref(`users/${currentUser.uid}/lastSeen`).set(Date.now());
 }, 60000);
 
-// ==================== Auth State Listener ====================
+// ==================== Auth State Listener (معدل - بدون دوال المصادقة) ====================
 const initLoader = document.getElementById('initLoader');
 
 auth.onAuthStateChanged(async (user) => {
@@ -1828,14 +1801,20 @@ auth.onAuthStateChanged(async (user) => {
             currentUser = { ...currentUser, ...snapshot.val() };
         } else {
             await db.ref(`users/${user.uid}`).set({
-                uid: user.uid, name: user.displayName || user.email.split('@')[0],
-                email: user.email, bio: "مرحباً! أنا في NEXUS ✨", avatar: "", cover: "",
-                website: "", verified: false, isAdmin: user.email === ADMIN_EMAIL,
-                blockedUsers: {}, mutedUntil: 0, createdAt: Date.now()
+                name: user.displayName || user.email.split('@')[0],
+                email: user.email,
+                bio: "مرحباً! أنا في NEXUS ✨",
+                avatar: "",
+                cover: "",
+                website: "",
+                verified: false,
+                isAdmin: user.email === ADMIN_EMAIL,
+                blockedUsers: {},
+                mutedUntil: 0,
+                createdAt: Date.now()
             });
             currentUser.isAdmin = user.email === ADMIN_EMAIL;
         }
-        document.getElementById('authScreen').style.display = 'none';
         document.getElementById('mainApp').style.display = 'block';
         
         const savedTheme = localStorage.getItem('theme');
@@ -1860,7 +1839,9 @@ auth.onAuthStateChanged(async (user) => {
         loadDndStatus();
         checkScheduledPosts();
     } else {
-        document.getElementById('authScreen').style.display = 'flex';
-        document.getElementById('mainApp').style.display = 'none';
+        // المستخدم غير مسجل الدخول - التوجيه إلى صفحة التسجيل
+        window.location.href = 'auth.html';
     }
 });
+
+console.log('✅ NEXUS Ultimate System Ready with Enhanced Upload Progress Bar');
