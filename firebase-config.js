@@ -1,11 +1,11 @@
-// ==================== Firebase Configuration ====================
+// ==================== NEXUS - Firebase Configuration ====================
 const firebaseConfig = {
-    apiKey: "AIzaSyDCtfrPPikkAfFy0He_OHxFyiXsYeiTk0o",
-    authDomain: "ftor-440ee.firebaseapp.com",
-    databaseURL: "https://ftor-440ee-default-rtdb.firebaseio.com/",
-    projectId: "ftor-440ee",
-    storageBucket: "ftor-440ee.firebasestorage.app",
-    appId: "1:402606714665:web:2c7701209387c6a89a5138"
+    apiKey: "AIzaSyBtLujUdKoq1zGb20LSZXG5ogPVqMfhhzg",
+    authDomain: "gomka-bc223.firebaseapp.com",
+    databaseURL: "https://gomka-bc223-default-rtdb.firebaseio.com/",
+    projectId: "gomka-bc223",
+    storageBucket: "gomka-bc223.firebasestorage.app",
+    appId: "1:355944182113:web:3606605581e4c52239d520"
 };
 
 // Initialize Firebase
